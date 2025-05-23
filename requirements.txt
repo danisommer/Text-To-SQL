@@ -1,0 +1,24 @@
+# Text-to-SQL Application Requirements
+
+# Core dependencies
+pandas>=1.5.0
+sqlalchemy>=1.4.0
+transformers>=4.21.0
+torch>=1.12.0
+
+# Database drivers
+pymysql>=1.0.2
+psycopg2-binary>=2.9.0
+
+# Optional: for better text processing
+nltk>=3.7
+spacy>=3.4.0
+
+# Jupyter notebook support
+jupyter>=1.0.0
+ipywidgets>=7.6.0
+
+# Visualization (optional)
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.0.0
