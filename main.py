@@ -711,7 +711,6 @@ class TextToSQLApp:
             print(f"✗ Query failed: {message}")
     
     def _create_database(self):
-        """Handle database creation"""
         if not self.db_manager.connection:
             print("Not connected to database server!")
             return
