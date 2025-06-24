@@ -2,8 +2,13 @@ import mysql.connector
 import psycopg2
 import re
 import sys
+import os
+from dotenv import load_dotenv
 from tabulate import tabulate
 from typing import Dict, List, Tuple, Any, Optional, Union
+
+# Load environment variables from .env file
+load_dotenv()
 
 class DatabaseConnection:
     def __init__(self):
@@ -433,21 +438,23 @@ def main():
     
     # Define automaticamente todos os parâmetros de conexão
     host = "localhost"
-    database = "escola"
     
-    # Define os parâmetros específicos para cada tipo de banco
+    # Solicita o nome do banco de dados
+    database = input(f"\nDigite o nome do banco de dados: ").strip()
+    
+    # Define os parâmetros específicos para cada tipo de banco usando variáveis de ambiente
     if db_type == "mysql":
-        port = 3306
-        user = "root"
-        password = "dzs2102"
+        port = int(os.getenv("MYSQL_PORT", 3306))
+        user = os.getenv("MYSQL_USER", "root")
+        password = os.getenv("MYSQL_PASSWORD", "")
     else:  # postgresql
-        port = 5432
-        user = "postgres"
-        password = "dzs2102"
+        port = int(os.getenv("POSTGRESQL_PORT", 5432))
+        user = os.getenv("POSTGRESQL_USER", "postgres")
+        password = os.getenv("POSTGRESQL_PASSWORD", "postgres")
         
     if not db.connect(db_type, host, user, password, database, port):
         print(f"Falha ao conectar ao banco '{database}'.")
-        print(f"\nVerifique se:\n- O serviço {db_type} está em execução\n- O usuário '{user}' existe\n- A senha está correta (padrão: {'vazia' if db_type == 'mysql' else 'postgres'})")
+        print(f"\nVerifique se:\n- O serviço {db_type} está em execução\n- O usuário '{user}' existe\n- A senha está correta\n- O banco de dados '{database}' existe")
         return
     
     text_to_sql = TextToSQL(db)
