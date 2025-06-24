@@ -32,26 +32,26 @@ class DatabaseConnection:
                     port=port if port else 5432
                 )
             else:
-                print(f"Unsupported database type: {db_type}")
+                print(f"Tipo de banco de dados não suportado: {db_type}")
                 return False
             
-            print(f"Connected to {db_type} database: {database}")
+            print(f"Conectado ao banco de dados {db_type}: {database}")
             self.load_schema()
             return True
         except Exception as e:
-            print(f"Error connecting to database: {e}")
+            print(f"Erro ao conectar ao banco de dados: {e}")
             return False
     
     def disconnect(self) -> None:
         """Fecha a conexao com o banco de dados"""
         if self.connection:
             self.connection.close()
-            print("Database connection closed")
+            print("Conexão com o banco de dados fechada")
     
     def load_schema(self) -> None:
         """Carrega o esquema do banco de dados (tabelas e suas colunas)"""
         if not self.connection:
-            print("Not connected to any database")
+            print("Não conectado a nenhum banco de dados")
             return
         
         cursor = self.connection.cursor()
@@ -81,14 +81,14 @@ class DatabaseConnection:
                     columns = [col[0] for col in cursor.fetchall()]
                     self.schema[table] = columns
         except Exception as e:
-            print(f"Error loading schema: {e}")
+            print(f"Erro ao carregar esquema: {e}")
         finally:
             cursor.close()
     
     def execute_query(self, query: str) -> Tuple[List[Tuple], List[str]]:
         """Executa consulta SQL e retorna resultados com nomes das colunas"""
         if not self.connection:
-            print("Not connected to any database")
+            print("Não conectado a nenhum banco de dados")
             return [], []
         
         cursor = self.connection.cursor()
@@ -99,7 +99,7 @@ class DatabaseConnection:
             column_names = [desc[0] for desc in cursor.description] if cursor.description else []
             return results, column_names
         except Exception as e:
-            print(f"Error executing query: {e}")
+            print(f"Erro ao executar consulta: {e}")
             return [], []
         finally:
             cursor.close()
@@ -320,151 +320,154 @@ class TextToSQL:
 def display_results(results: List[Tuple], column_names: List[str]) -> None:
     """Exibe resultados da consulta em uma tabela formatada"""
     if not results:
-        print("No results found")
+        print("Nenhum resultado encontrado")
         return
     
-    print("\n=== Query Results ===")
-    print(f"Columns: {', '.join(column_names)}")
+    print("\n=== Resultados da Consulta ===")
+    print(f"Colunas: {', '.join(column_names)}")
     print(tabulate(results, headers=column_names, tablefmt="grid"))
 
 def print_usage_guide():
     """Imprime um guia de termos e como usar o sistema"""
     guide = """
-=== Text-to-SQL Query System Usage Guide ===
+=== Guia de Uso do Sistema de Consultas em SQL ===
 
-This system converts natural language queries to SQL and executes them against your database.
+Este sistema converte consultas em linguagem natural para SQL e as executa no seu banco de dados.
 
-SUPPORTED QUERY TYPES:
+TIPOS DE CONSULTA SUPORTADOS:
 -----------------------------------------
-1. BASIC LISTING
-   Examples: "mostre todos os alunos", "listar disciplinas"
-   SQL generated: SELECT * FROM [table]
+1. LISTAGEM BÁSICA
+   Exemplos: "mostre todos os alunos", "listar disciplinas"
+   SQL gerado: SELECT * FROM [tabela]
 
-2. COUNTING
-   Examples: "quantos professores existem", "contar disciplinas no departamento"
-   SQL generated: SELECT COUNT(*) FROM [table]
+2. CONTAGEM
+   Exemplos: "quantos professores existem", "contar disciplinas no departamento"
+   SQL gerado: SELECT COUNT(*) FROM [tabela]
 
-3. AVERAGES
-   Examples: "média de notas dos alunos", "qual a média de salário dos professores"
-   SQL generated: SELECT AVG([column]) FROM [table]
+3. MÉDIAS
+   Exemplos: "média de notas dos alunos", "qual a média de salário dos professores"
+   SQL gerado: SELECT AVG([coluna]) FROM [tabela]
 
-4. MAXIMUM VALUES
-   Examples: "maior nota da disciplina", "qual o máximo de faltas"
-   SQL generated: SELECT MAX([column]) FROM [table]
+4. VALORES MÁXIMOS
+   Exemplos: "maior nota da disciplina", "qual o máximo de faltas"
+   SQL gerado: SELECT MAX([coluna]) FROM [tabela]
 
-5. MINIMUM VALUES
-   Examples: "menor valor de mensalidade", "mínimo de créditos"
-   SQL generated: SELECT MIN([column]) FROM [table]
+5. VALORES MÍNIMOS
+   Exemplos: "menor valor de mensalidade", "mínimo de créditos"
+   SQL gerado: SELECT MIN([coluna]) FROM [tabela]
 
-FILTERING CONDITIONS:
+CONDIÇÕES DE FILTRO:
 -----------------------------------------
-1. YEAR FILTER
-   Examples: "disciplinas de 2024", "matrículas no ano de 2023"
-   SQL generated: WHERE YEAR(date_column) = [year]
+1. FILTRO POR ANO
+   Exemplos: "disciplinas de 2024", "matrículas no ano de 2023"
+   SQL gerado: WHERE YEAR(coluna_data) = [ano]
 
-2. EQUALITY FILTER
-   Examples: "alunos onde curso é Economia", "notas com valor igual a 10"
-   SQL generated: WHERE [column] = [value]
+2. FILTRO DE IGUALDADE
+   Exemplos: "alunos onde curso é Economia", "notas com valor igual a 10"
+   SQL gerado: WHERE [coluna] = [valor]
 
-3. COMPARISON OPERATORS
-   Examples: "notas maiores que 8", "alunos com idade menor que 20" 
-   SQL generated: WHERE [column] > [value], WHERE [column] < [value]
+3. OPERADORES DE COMPARAÇÃO
+   Exemplos: "notas maiores que 8", "alunos com idade menor que 20" 
+   SQL gerado: WHERE [coluna] > [valor], WHERE [coluna] < [valor]
    
-   Supported operators:
+   Operadores suportados:
    - maior que / acima de / superior a (>)
    - menor que / abaixo de / inferior a (<)
    - maior ou igual a / a partir de (>=)
    - menor ou igual a / até (<=)
 
-TIPS FOR EFFECTIVE QUERIES:
+DICAS PARA CONSULTAS EFETIVAS:
 -----------------------------------------
-- Mention the table name clearly (e.g., "alunos", "disciplinas")
-- Specify the column when using aggregations (e.g., "média de notas")
-- Include filtering conditions after mentioning the main request
-- For date filtering, include the year with a preposition (e.g., "em 2024", "do ano 2023")
+- Mencione o nome da tabela claramente (ex: "alunos", "disciplinas")
+- Especifique a coluna ao usar agregações (ex: "média de notas")
+- Inclua condições de filtro após mencionar a solicitação principal
+- Para filtrar por data, inclua o ano com uma preposição (ex: "em 2024", "do ano 2023")
 
-COMMAND OPTIONS:
+OPÇÕES DE COMANDO:
 -----------------------------------------
-- Type 'guide' to display this guide again
-- Type 'tables' to show available tables and columns
-- Type 'exit' to quit the program
+- Digite 'guia' para exibir este guia novamente
+- Digite 'sair' para encerrar o programa
 """
     print(guide)
-
-def display_tables(schema):
-    """Exibe todas as tabelas e suas colunas"""
-    print("\n=== Available Tables and Columns ===")
-    for table, columns in schema.items():
-        print(f"\n📋 {table.upper()}")
-        for col in columns:
-            print(f"  - {col}")
 
 def show_tables_summary(schema: Dict[str, List[str]]) -> None:
     """Exibe um resumo compacto das tabelas disponiveis"""
     if not schema:
-        print("\nNo tables available. Please check your database connection.")
+        print("\nNenhuma tabela disponível. Por favor, verifique sua conexão com o banco de dados.")
         return
         
-    print("\n=== Available Tables and Columns ===")
+    print("\n=== Tabelas e Colunas Disponíveis ===")
     table_names = list(schema.keys())
     
     for table in table_names:
         columns = schema[table]
-        print(f"\n📋 {table.upper()} ({len(columns)} columns):")
+        print(f"\n📋 {table.upper()} ({len(columns)} colunas):")
         
         if len(columns) > 6:
-            col_display = ", ".join(columns[:5]) + f", ... (+{len(columns)-5} more)"
+            col_display = ", ".join(columns[:5]) + f", ... (+{len(columns)-5} mais)"
         else:
             col_display = ", ".join(columns)
             
-        print(f"   Columns: {col_display}")
-    
-    print("\nType 'tables' for more detailed column information")
+        print(f"   Colunas: {col_display}")
 
 def main():
-    print("=== Database Query System ===")
+    print("=== Sistema de Consultas ao Banco de Dados ===")
     
     db = DatabaseConnection()
     
-    db_type = input("Database type (mysql/postgresql): ").strip().lower()
-    host = input("Host [localhost]: ").strip() or "localhost"
-    port = input("Port [default]: ").strip()
-    port = int(port) if port.isdigit() else None
-    user = input("Username: ").strip()
-    password = input("Password: ").strip()
-    database = input("Database name: ").strip()
+    # Solicita o tipo de banco usando números
+    print("\nSelecione o tipo de banco de dados:")
+    print("1 - MySQL")
+    print("2 - PostgreSQL")
     
+    choice = input("Opção [1]: ").strip() or "1"
+    
+    # Mapeia a escolha numérica para o tipo de banco
+    if choice == "1":
+        db_type = "mysql"
+    elif choice == "2":
+        db_type = "postgresql"
+    else:
+        print("Opção inválida. Usando MySQL como padrão.")
+        db_type = "mysql"
+    
+    # Define automaticamente todos os parâmetros de conexão
+    host = "localhost"
+    database = "escola"
+    
+    # Define os parâmetros específicos para cada tipo de banco
+    if db_type == "mysql":
+        port = 3306
+        user = "root"
+        password = "dzs2102"
+    else:  # postgresql
+        port = 5432
+        user = "postgres"
+        password = "dzs2102"
+        
     if not db.connect(db_type, host, user, password, database, port):
-        print("Failed to connect to database")
+        print(f"Falha ao conectar ao banco '{database}'.")
+        print(f"\nVerifique se:\n- O serviço {db_type} está em execução\n- O usuário '{user}' existe\n- A senha está correta (padrão: {'vazia' if db_type == 'mysql' else 'postgres'})")
         return
     
     text_to_sql = TextToSQL(db)
-    
-    print("\nAvailable tables:")
-    for table, columns in db.schema.items():
-        print(f"- {table}: {', '.join(columns)}")
-    
-    print("\nType 'guide' to see usage instructions and supported query types.")
-    
+        
     while True:
         show_tables_summary(db.schema)
         
-        print("\nEnter a natural language query (or 'exit' to quit, 'guide' for help, 'tables' to list tables):")
+        print("\nDigite uma consulta em linguagem natural (ou 'sair' para sair, 'guia' para ajuda):")
         query = input("> ").strip()
         
-        if query.lower() in ('exit', 'quit', 'q'):
+        if query.lower() in ('sair', 's', 'exit', 'quit', 'q'):
             break
-        elif query.lower() == 'guide':
+        elif query.lower() in ('guia', 'guide'):
             print_usage_guide()
-            continue
-        elif query.lower() == 'tables':
-            display_tables(db.schema)
             continue
             
         query_info = text_to_sql.parse_query(query)
         sql = text_to_sql.generate_sql(query_info)
         
-        print(f"\nGenerated SQL: {sql}")
+        print(f"\nSQL gerado: {sql}")
         
         if sql and not sql.startswith("Não"):
             results, column_names = db.execute_query(sql)
