@@ -1,9 +1,3 @@
-# Core dependencies
-mysql-connector-python  # For MySQL support
-psycopg2-binary         # For PostgreSQL support
-tabulate                # For formatted output
-
-# Optional (for enhanced AI features)
-openai                  # For GPT-based conversion
-transformers            # For local models
-torch                   # PyTorch for transformers
+mysql-connector-python
+psycopg2-binary
+tabulate
