@@ -947,8 +947,19 @@ def main():
     print("\nIniciando sistema Text-to-SQL...")
     text_to_sql = TextToSQL(db)
     
+    # Choose processing method
+    use_ai = False
     if text_to_sql.model_loaded:
-        print("\nModelo Llama 3.2 carregado com sucesso!")
+        print("\nSelecione o método de processamento de consultas:")
+        print("1. Baseado em regras (mais rápido, menos flexível)")
+        print("2. Modelo de IA Llama 3.2 (mais preciso, mais lento)")
+        method_choice = input("\nSua escolha [2]: ").strip() or "2"
+        use_ai = method_choice == "2"
+        
+        if use_ai:
+            print("\nUsando modelo Llama 3.2 para processamento de consultas!")
+        else:
+            print("\nUsando método baseado em regras para processamento de consultas.")
     else:
         print("\nModelo Llama 3.2 não disponível, usando método baseado em regras.")
     
@@ -972,11 +983,16 @@ def main():
         print(f"\nProcessando: '{query}'")
         
         try:
-            query_info = text_to_sql.parse_query(query)
-            sql = text_to_sql.generate_sql(query_info)
-            
-            method = "IA" if "raw_sql" in query_info else "regras"
-            print(f"\nSQL gerado ({method}): {sql}")
+            # Use the selected method based on user choice
+            if use_ai and text_to_sql.model_loaded:
+                # Use AI-based method
+                sql = text_to_sql.generate_sql_with_llama(query)
+                print(f"\nSQL gerado (IA): {sql}")
+            else:
+                # Use rules-based method
+                query_info = text_to_sql.parse_query_with_rules(query)
+                sql = text_to_sql.generate_sql_from_rules(query_info)
+                print(f"\nSQL gerado (regras): {sql}")
             
             results, column_names = db.execute_query(sql)
             display_results(results, column_names)
