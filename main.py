@@ -947,7 +947,7 @@ def main():
     print("\nIniciando sistema Text-to-SQL...")
     text_to_sql = TextToSQL(db)
     
-    # Choose processing method
+    # Escolhe método de processamento de consultas
     use_ai = False
     if text_to_sql.model_loaded:
         print("\nSelecione o método de processamento de consultas:")
@@ -983,13 +983,13 @@ def main():
         print(f"\nProcessando: '{query}'")
         
         try:
-            # Use the selected method based on user choice
+            # Usa o método de IA ou regras baseado na escolha do usuário
             if use_ai and text_to_sql.model_loaded:
-                # Use AI-based method
+                # Use Llama para gerar SQL
                 sql = text_to_sql.generate_sql_with_llama(query)
                 print(f"\nSQL gerado (IA): {sql}")
             else:
-                # Use rules-based method
+                # Use regras para gerar SQL
                 query_info = text_to_sql.parse_query_with_rules(query)
                 sql = text_to_sql.generate_sql_from_rules(query_info)
                 print(f"\nSQL gerado (regras): {sql}")
