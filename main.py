@@ -8,6 +8,7 @@ from transformers import logging as transformers_logging
 from dotenv import load_dotenv
 from tabulate import tabulate
 from typing import Dict, List, Tuple, Any, Optional, Union
+from difflib import SequenceMatcher
 
 # Carrega variáveis de ambiente e configura o registro
 load_dotenv()
@@ -171,11 +172,37 @@ class TextToSQL:
         self.db = db_connection
         self.schema = db_connection.schema
         self.column_types = db_connection.column_types
+        self.foreign_keys = db_connection.foreign_keys
+        self.primary_keys = db_connection.primary_keys
         self.model = None
         self.tokenizer = None
         self.pipe = None
         self.model_loaded = False
-        self.load_model()
+        
+        # Enhanced patterns with better Portuguese support for rule-based parsing
+        self.patterns = {
+            'select_all': r'(?:mostre|exibir?|listar?|quais|qual|todos|todas|ver|visualizar).*?(?:de|da|do|das|dos|na|no|nas|nos)\s+([\w\s]+)',
+            'count': r'(?:quantos?|quantas?|contar?|conte|número|numero|total).*?(?:de|da|do|das|dos|em|na|no|nas|nos)\s+([\w\s]+)',
+            'average': r'(?:média|media|médias|medias).*?(?:de|da|do|das|dos)\s+([\w\s]+).*?(?:em|na|no|nas|nos|do|de)\s+([\w\s]+)',
+            'max': r'(?:maior|máximo|maximo|máxima|maxima).*?(?:de|da|do|das|dos)\s+([\w\s]+)',
+            'min': r'(?:menor|mínimo|minimo|máxima|minima).*?(?:de|da|do|das|dos)\s+([\w\s]+)',
+            'where_condition': r'(?:onde|que tenha|contendo|com)\s+([\w\s]+)\s+(?:igual a|é|eh|=|como|seja)\s+([\w\s\'\"]+)',
+            'greater_than': r'(?:maior(?:es)? que|acima de|superior(?:es)? a)\s+(\d+(?:\.\d+)?)',
+            'less_than': r'(?:menor(?:es)? que|abaixo de|inferior(?:es)? a)\s+(\d+(?:\.\d+)?)',
+            'greater_equal': r'(?:maior(?:es)? ou igual a|a partir de)\s+(\d+(?:\.\d+)?)',
+            'less_equal': r'(?:menor(?:es)? ou igual a|até)\s+(\d+(?:\.\d+)?)',
+            'join_indicators': r'(?:junto com|com|relacionado|vinculado|associado)',
+            'group_by': r'(?:agrupar|agrupado|por cada|para cada)\s+([\w\s]+)',
+            'order_by': r'(?:ordenar|ordenado|classificar)\s+(?:por\s+)?([\w\s]+)(?:\s+(crescente|decrescente|asc|desc))?'
+        }
+        
+        # Try to load the AI model
+        try:
+            self.load_model()
+        except Exception as e:
+            print(f"Aviso: Não foi possível carregar o modelo de IA: {e}")
+            print("Usando método baseado em regras como alternativa.")
+            self.model_loaded = False
     
     def load_model(self):
         """Carrega o modelo Llama 3.2"""
@@ -325,26 +352,484 @@ Convert this Portuguese query to SQL: {text}
         
         return response.strip()
     
+    def similarity(self, a: str, b: str) -> float:
+        """Calcula similaridade entre duas strings"""
+        return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+    def find_table_by_keyword(self, text: str) -> str:
+        """Encontra a tabela mais provavel com melhor matching"""
+        text = text.lower()
+        best_match = None
+        best_score = 0
+        
+        # Mapeamento de palavras comuns para tabelas
+        table_aliases = {
+            'aluno': 'alunos',
+            'estudante': 'alunos',
+            'estudantes': 'alunos',
+            'professor': 'professores',
+            'docente': 'professores',
+            'docentes': 'professores',
+            'materia': 'materias',
+            'disciplina': 'materias',
+            'disciplinas': 'materias',
+            'nota': 'notas',
+            'avaliacao': 'notas',
+            'avaliacoes': 'notas',
+            'avaliação': 'notas',
+            'avaliações': 'notas'
+        }
+        
+        # Primeiro, verifica aliases
+        for alias, table in table_aliases.items():
+            if alias in text and table in self.schema:
+                return table
+        
+        # Depois verifica similaridade com nomes de tabelas
+        for table in self.schema.keys():
+            similarity_score = self.similarity(table, text)
+            if similarity_score > 0.6 and similarity_score > best_score:
+                best_match = table
+                best_score = similarity_score
+            
+            # Verifica se a tabela está presente no texto
+            if table.lower() in text:
+                score = len(table) * 2
+                if score > best_score:
+                    best_match = table
+                    best_score = score
+                        
+        return best_match
+
+    def find_column_by_keyword(self, table: str, text: str, context: str = '') -> Optional[str]:
+        """Encontra a coluna mais provavel com contexto melhorado"""
+        if not table or table not in self.schema:
+            return None
+            
+        text = text.lower()
+        columns = self.schema[table]
+        best_match = None
+        best_score = 0
+        
+        # Mapeamento de palavras para colunas comuns
+        column_aliases = {
+            'nome': 'nome',
+            'nomes': 'nome',
+            'data': 'data_nascimento' if 'nascimento' in text else 'data_avaliacao',
+            'nascimento': 'data_nascimento',
+            'idade': 'data_nascimento',
+            'especialidade': 'especialidade',
+            'area': 'especialidade',
+            'nota': 'nota',
+            'notas': 'nota',
+            'pontuacao': 'nota',
+            'pontuações': 'nota',
+            'avaliacao': 'data_avaliacao',
+            'avaliação': 'data_avaliacao'
+        }
+        
+        # Verifica aliases primeiro
+        for alias, col_name in column_aliases.items():
+            if alias in text and col_name in columns:
+                return col_name
+        
+        # Verifica similaridade
+        for col in columns:
+            if col.lower() in text:
+                score = len(col) * 2
+                if score > best_score:
+                    best_match = col
+                    best_score = score
+            
+            similarity_score = self.similarity(col, text)
+            if similarity_score > 0.7 and similarity_score > best_score:
+                best_match = col
+                best_score = similarity_score
+        
+        return best_match
+    
+    def extract_year(self, text: str) -> Optional[str]:
+        """Extrai o ano do texto da consulta com mais padrões"""
+        year_patterns = [
+            r'(?:de |em |no |na |ano de |ano )(\d{4})',
+            r'(\d{4})',
+            r'(?:desde |a partir de )(\d{4})',
+            r'(?:até |ate )(\d{4})'
+        ]
+        
+        for pattern in year_patterns:
+            match = re.search(pattern, text)
+            if match:
+                year = int(match.group(1))
+                if 1900 <= year <= 2100:  # Validação básica de ano
+                    return str(year)
+        return None
+    
+    def detect_joins(self, text: str) -> List[Dict]:
+        """Detecta necessidade de JOINs baseado no contexto"""
+        joins = []
+        text = text.lower()
+        
+        # Mapeamento de relacionamentos conhecidos
+        relationships = {}
+        
+        # Constrói mapeamento de relacionamentos a partir das chaves estrangeiras
+        for table, fks in self.db.foreign_keys.items():
+            for fk_col, ref_table, ref_col in fks:
+                key = (table, ref_table)
+                relationships[key] = (fk_col, ref_col)
+        
+        # Detecta se múltiplas tabelas são mencionadas
+        mentioned_tables = []
+        for table in self.schema.keys():
+            if table.lower() in text or any(alias in text for alias in ['aluno', 'professor', 'materia', 'nota']):
+                if table == 'alunos' and ('aluno' in text or 'estudante' in text):
+                    mentioned_tables.append(table)
+                elif table == 'professores' and ('professor' in text or 'docente' in text):
+                    mentioned_tables.append(table)
+                elif table == 'materias' and ('materia' in text or 'disciplina' in text):
+                    mentioned_tables.append(table)
+                elif table == 'notas' and ('nota' in text or 'avaliacao' in text):
+                    mentioned_tables.append(table)
+        
+        # Gera JOINs necessários
+        for i, table1 in enumerate(mentioned_tables):
+            for table2 in mentioned_tables[i+1:]:
+                if (table1, table2) in relationships:
+                    col1, col2 = relationships[(table1, table2)]
+                    joins.append({
+                        'table1': table1,
+                        'table2': table2,
+                        'column1': col1,
+                        'column2': col2
+                    })
+                elif (table2, table1) in relationships:
+                    col2, col1 = relationships[(table2, table1)]
+                    joins.append({
+                        'table1': table2,
+                        'table2': table1,
+                        'column1': col2,
+                        'column2': col1
+                    })
+        
+        return joins
+        
+    def parse_multiple_conditions(self, text: str, table: str) -> List[Dict]:
+        """Analisa múltiplas condições WHERE conectadas por 'e'/'and'"""
+        conditions = []
+        
+        # Divide o texto por conectores
+        parts = re.split(r'\s+e\s+|\s+and\s+', text)
+        
+        for part in parts:
+            part = part.strip()
+            
+            # Condição de igualdade
+            where_match = re.search(r'([\w\s]+)\s+(?:é|eh|=|igual a|seja)\s+([\w\s\'\"]+)', part)
+            if where_match:
+                field_name = where_match.group(1).strip()
+                value = where_match.group(2).strip().strip('\'"')
+                column = self.find_column_by_keyword(table, field_name)
+                if column:
+                    conditions.append({'type': 'equality', 'column': column, 'value': value})
+                continue
+            
+            # Filtro por ano específico
+            year_match = re.search(r'ano\s+(?:de\s+)?(?:nascimento\s+)?(?:é|eh|=)\s+(\d{4})', part)
+            if year_match:
+                year = year_match.group(1)
+                date_columns = [col for col in self.schema[table] 
+                               if any(date_term in col.lower() for date_term in 
+                                     ['data', 'date', 'dt', 'ano', 'year'])]
+                if date_columns:
+                    conditions.append({'type': 'year', 'column': date_columns[0], 'value': year})
+                continue
+            
+            # Operadores de comparação
+            for op_name, pattern in [
+                ('greater_than', r'(?:maior(?:es)? que|acima de|superior(?:es)? a)\s+(\d+(?:\.\d+)?)'),
+                ('less_than', r'(?:menor(?:es)? que|abaixo de|inferior(?:es)? a)\s+(\d+(?:\.\d+)?)'),
+                ('greater_equal', r'(?:maior(?:es)? ou igual a|a partir de)\s+(\d+(?:\.\d+)?)'),
+                ('less_equal', r'(?:menor(?:es)? ou igual a|até)\s+(\d+(?:\.\d+)?)')
+            ]:
+                match = re.search(pattern, part)
+                if match:
+                    value = match.group(1).strip()
+                    column = self.find_column_by_keyword(table, part) or 'nota'
+                    operator_map = {
+                        'greater_than': '>',
+                        'less_than': '<',
+                        'greater_equal': '>=',
+                        'less_equal': '<='
+                    }
+                    conditions.append({
+                        'type': 'comparison',
+                        'column': column, 
+                        'operator': operator_map[op_name], 
+                        'value': value
+                    })
+                    break
+        
+        return conditions
+
+    def parse_query_with_rules(self, text: str) -> Dict:
+        """Analisa consulta usando método baseado em regras (sem IA)"""
+        original_text = text
+        text = text.lower()
+        query_type = 'select'
+        table = self.find_table_by_keyword(text)
+        
+        if not table:
+            return {'error': 'Não foi possível identificar a tabela na consulta'}
+            
+        query_info = {'type': query_type, 'table': table}
+        
+        # Detecta tipo de operação com melhor busca por colunas
+        if re.search(r'média|media|médias|medias', text):
+            query_info['type'] = 'average'
+            # Busca coluna após "média de" ou similar
+            avg_match = re.search(r'média\s+(?:de\s+|da\s+|das\s+|do\s+|dos\s+)?([\w\s]+)', text)
+            if avg_match:
+                column_hint = avg_match.group(1).strip()
+                query_info['column'] = self.find_column_by_keyword(table, column_hint, 'average')
+            if not query_info.get('column'):
+                query_info['column'] = 'nota'  # Default
+                
+        elif re.search(r'quant[oa]s|contar|conte|número|numero|total', text):
+            query_info['type'] = 'count'
+            
+        elif re.search(r'máximo|maximo|maior', text) and not re.search(r'maior(?:es)? que|acima de|superior(?:es)? a', text):
+            query_info['type'] = 'max'
+            # Busca coluna após "maior" ou "máximo"
+            max_match = re.search(r'(?:maior|máximo|maximo)\s+(?:de\s+|da\s+|das\s+|do\s+|dos\s+)?([\w\s]+)', text)
+            if max_match:
+                column_hint = max_match.group(1).strip()
+                query_info['column'] = self.find_column_by_keyword(table, column_hint, 'max')
+            if not query_info.get('column'):
+                # Se não encontrou coluna específica, tenta detectar contexto
+                if 'nota' in text or 'avaliacao' in text or 'pontuacao' in text:
+                    query_info['column'] = 'nota'
+                else:
+                    query_info['column'] = 'nota'  # Default
+                    
+        elif re.search(r'mínimo|minimo|menor', text) and not re.search(r'menor(?:es)? que|abaixo de|inferior(?:es)? a', text):
+            query_info['type'] = 'min'
+            # Busca coluna após "menor" ou "mínimo"
+            min_match = re.search(r'(?:menor|mínimo|minimo)\s+(?:de\s+|da\s+|das\s+|do\s+|dos\s+)?([\w\s]+)', text)
+            if min_match:
+                column_hint = min_match.group(1).strip()
+                query_info['column'] = self.find_column_by_keyword(table, column_hint, 'min')
+            if not query_info.get('column'):
+                query_info['column'] = 'nota'  # Default
+        
+        # Detecta JOINs necessários
+        joins = self.detect_joins(text)
+        if joins:
+            query_info['joins'] = joins
+            
+        # Detecta condições WHERE com suporte a múltiplas condições
+        where_part = ""
+        if ' onde ' in text:
+            where_part = text.split(' onde ', 1)[1]
+        elif ' que ' in text and ('tenha' in text or 'tem' in text):
+            where_part = text.split(' que ', 1)[1]
+        elif ' com ' in text:
+            where_part = text.split(' com ', 1)[1]
+            
+        if where_part:
+            conditions = self.parse_multiple_conditions(where_part, table)
+            if conditions:
+                query_info['where'] = {'conditions': conditions}
+        
+        # Se não encontrou condições estruturadas, tenta padrões simples
+        if 'where' not in query_info:
+            # Condição simples de igualdade
+            where_match = re.search(self.patterns['where_condition'], text)
+            if where_match:
+                field_name = where_match.group(1).strip()
+                value = where_match.group(2).strip().strip('\'"')
+                column = self.find_column_by_keyword(table, field_name)
+                
+                if column:
+                    query_info['where'] = {'conditions': [{'type': 'equality', 'column': column, 'value': value}]}
+            
+            # Operadores de comparação únicos
+            for op_name, pattern in [
+                ('greater_than', self.patterns['greater_than']),
+                ('less_than', self.patterns['less_than']),
+                ('greater_equal', self.patterns['greater_equal']),
+                ('less_equal', self.patterns['less_equal'])
+            ]:
+                match = re.search(pattern, text)
+                if match:
+                    value = match.group(1).strip()
+                    column = self.find_column_by_keyword(table, text) or 'nota'
+                    operator_map = {
+                        'greater_than': '>',
+                        'less_than': '<',
+                        'greater_equal': '>=',
+                        'less_equal': '<='
+                    }
+                    query_info.setdefault('where', {})
+                    query_info['where']['conditions'] = [{
+                        'type': 'comparison',
+                        'column': column, 
+                        'operator': operator_map[op_name], 
+                        'value': value
+                    }]
+                    break
+                    
+            # Filtro por ano genérico
+            year = self.extract_year(text)
+            if year and 'where' not in query_info:
+                date_columns = [col for col in self.schema[table] 
+                               if any(date_term in col.lower() for date_term in 
+                                     ['data', 'date', 'dt', 'ano', 'year'])]
+                
+                if date_columns:
+                    query_info['where'] = {'conditions': [{'type': 'year', 'column': date_columns[0], 'value': year}]}
+        
+        # Detecta ORDER BY
+        order_match = re.search(self.patterns['order_by'], text)
+        if order_match:
+            order_column = self.find_column_by_keyword(table, order_match.group(1))
+            if order_column:
+                direction = 'ASC'
+                if order_match.group(2):
+                    direction = 'DESC' if order_match.group(2).lower() in ['decrescente', 'desc'] else 'ASC'
+                query_info['order_by'] = {'column': order_column, 'direction': direction}
+                
+        return query_info
+    
+    def generate_sql_from_rules(self, query_info: Dict) -> str:
+        """Gera SQL a partir das informações da consulta baseada em regras"""
+        if 'error' in query_info:
+            return query_info['error']
+        
+        table = query_info['table']
+        query_type = query_info['type']
+        
+        # Constrói parte SELECT
+        if query_type == 'select':
+            select_clause = "SELECT *"
+        elif query_type == 'count':
+            select_clause = "SELECT COUNT(*)"
+        elif query_type == 'average':
+            column = query_info.get('column', 'nota')
+            select_clause = f"SELECT AVG({column})"
+        elif query_type == 'max':
+            column = query_info.get('column', 'nota')
+            select_clause = f"SELECT MAX({column})"
+        elif query_type == 'min':
+            column = query_info.get('column', 'nota')
+            select_clause = f"SELECT MIN({column})"
+        
+        # Constrói parte FROM com JOINs
+        from_clause = f"FROM {table}"
+        if 'joins' in query_info:
+            for join in query_info['joins']:
+                from_clause += f" JOIN {join['table2']} ON {join['table1']}.{join['column1']} = {join['table2']}.{join['column2']}"
+        
+        sql = f"{select_clause} {from_clause}"
+        
+        # Adiciona condições WHERE com nova estrutura
+        if 'where' in query_info and 'conditions' in query_info['where']:
+            conditions = []
+            
+            for condition in query_info['where']['conditions']:
+                if condition['type'] == 'equality':
+                    column = condition['column']
+                    value = condition['value']
+                    if value.isdigit():
+                        conditions.append(f"{column} = {value}")
+                    else:
+                        conditions.append(f"{column} LIKE '%{value}%'")
+                        
+                elif condition['type'] == 'comparison':
+                    column = condition['column']
+                    operator = condition['operator']
+                    value = condition['value']
+                    conditions.append(f"{column} {operator} {value}")
+                        
+                elif condition['type'] == 'year':
+                    year_col = condition['column']
+                    year_val = condition['value']
+                    
+                    if self.db.db_type == 'mysql':
+                        conditions.append(f"YEAR({year_col}) = {year_val}")
+                    else:
+                        conditions.append(f"EXTRACT(YEAR FROM {year_col}) = {year_val}")
+                        
+            if conditions:
+                sql += " WHERE " + " AND ".join(conditions)
+                
+        # Suporte à estrutura WHERE antiga (compatibilidade)
+        elif 'where' in query_info:
+            conditions = []
+            
+            if 'column' in query_info['where']:
+                column = query_info['where']['column']
+                value = query_info['where']['value']
+                if value.isdigit():
+                    conditions.append(f"{column} = {value}")
+                else:
+                    conditions.append(f"{column} LIKE '%{value}%'")
+            
+            if 'comparison' in query_info['where']:
+                comp_info = query_info['where']['comparison']
+                column = comp_info['column']
+                operator = comp_info['operator']
+                value = comp_info['value']
+                conditions.append(f"{column} {operator} {value}")
+                    
+            if 'year' in query_info['where']:
+                year_col = query_info['where']['year']['column']
+                year_val = query_info['where']['year']['value']
+                
+                if self.db.db_type == 'mysql':
+                    conditions.append(f"YEAR({year_col}) = {year_val}")
+                else:
+                    conditions.append(f"EXTRACT(YEAR FROM {year_col}) = {year_val}")
+                    
+            if conditions:
+                sql += " WHERE " + " AND ".join(conditions)
+        
+        # Adiciona ORDER BY
+        if 'order_by' in query_info:
+            order_info = query_info['order_by']
+            sql += f" ORDER BY {order_info['column']} {order_info['direction']}"
+                
+        return sql
+    
     def parse_query(self, text: str) -> Dict:
-        """Usa Llama para analisar a consulta em linguagem natural"""
-        try:
-            sql = self.generate_sql_with_llama(text)
-            return {
-                "raw_sql": sql,
-                "parsed": True
-            }
-        except Exception as e:
-            return {
-                "error": f"Erro na geração do SQL: {e}",
-                "parsed": False
-            }
+        """Usa Llama para analisar a consulta em linguagem natural, com fallback para regras"""
+        if self.model_loaded:
+            try:
+                # Tenta usar a IA primeiro
+                sql = self.generate_sql_with_llama(text)
+                return {
+                    "raw_sql": sql,
+                    "parsed": True
+                }
+            except Exception as e:
+                print(f"Erro na geração do SQL com IA: {e}")
+                print("Usando método baseado em regras como fallback.")
+                # Se falhar, tenta o método baseado em regras
+                return self.parse_query_with_rules(text)
+        else:
+            # Se o modelo não foi carregado, usa diretamente o método baseado em regras
+            return self.parse_query_with_rules(text)
     
     def generate_sql(self, query_info: Dict) -> str:
         """Gera SQL a partir das informações da consulta"""
         if "error" in query_info:
             return query_info["error"]
         
-        return query_info["raw_sql"]
+        if "raw_sql" in query_info:
+            return query_info["raw_sql"]
+        
+        # Se não tiver SQL pronto da IA, gera SQL a partir das regras
+        return self.generate_sql_from_rules(query_info)
 
 def display_results(results: List[Tuple], column_names: List[str]) -> None:
     """Exibe resultados com formatação melhorada"""
@@ -459,13 +944,15 @@ def main():
         print(f"\nFalha na conexão com '{database}'")
         return
     
-    try:
-        print("\nIniciando modelo Llama 3.2 1B...")
-        text_to_sql = TextToSQL(db)
-        print("\nSistema pronto! Digite suas consultas em português.")
-    except Exception as e:
-        print(f"\nErro ao inicializar modelo: {e}")
-        return
+    print("\nIniciando sistema Text-to-SQL...")
+    text_to_sql = TextToSQL(db)
+    
+    if text_to_sql.model_loaded:
+        print("\nModelo Llama 3.2 carregado com sucesso!")
+    else:
+        print("\nModelo Llama 3.2 não disponível, usando método baseado em regras.")
+    
+    print("\nSistema pronto! Digite suas consultas em português.")
     
     while True:
         show_tables_summary(db.schema, db.column_types, db.primary_keys, db.foreign_keys)
@@ -488,7 +975,8 @@ def main():
             query_info = text_to_sql.parse_query(query)
             sql = text_to_sql.generate_sql(query_info)
             
-            print(f"\nSQL gerado: {sql}")
+            method = "IA" if "raw_sql" in query_info else "regras"
+            print(f"\nSQL gerado ({method}): {sql}")
             
             results, column_names = db.execute_query(sql)
             display_results(results, column_names)
