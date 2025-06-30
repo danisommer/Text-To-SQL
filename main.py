@@ -572,6 +572,7 @@ Convert this Portuguese query to SQL: {text}
         
         return conditions
 
+    '''
     def parse_query_with_rules(self, text: str) -> Dict:
         """Analisa consulta usando método baseado em regras (sem IA)"""
         original_text = text
@@ -611,7 +612,7 @@ Convert this Portuguese query to SQL: {text}
                     query_info['column'] = 'nota'
                 else:
                     query_info['column'] = 'nota'  # Default
-                    
+                
         elif re.search(r'mínimo|minimo|menor', text) and not re.search(r'menor(?:es)? que|abaixo de|inferior(?:es)? a', text):
             query_info['type'] = 'min'
             # Busca coluna após "menor" ou "mínimo"
@@ -621,7 +622,7 @@ Convert this Portuguese query to SQL: {text}
                 query_info['column'] = self.find_column_by_keyword(table, column_hint, 'min')
             if not query_info.get('column'):
                 query_info['column'] = 'nota'  # Default
-        
+    
         # Detecta JOINs necessários
         joins = self.detect_joins(text)
         if joins:
@@ -640,7 +641,7 @@ Convert this Portuguese query to SQL: {text}
             conditions = self.parse_multiple_conditions(where_part, table)
             if conditions:
                 query_info['where'] = {'conditions': conditions}
-        
+    
         # Se não encontrou condições estruturadas, tenta padrões simples
         if 'where' not in query_info:
             # Condição simples de igualdade
@@ -652,7 +653,7 @@ Convert this Portuguese query to SQL: {text}
                 
                 if column:
                     query_info['where'] = {'conditions': [{'type': 'equality', 'column': column, 'value': value}]}
-            
+        
             # Operadores de comparação únicos
             for op_name, pattern in [
                 ('greater_than', self.patterns['greater_than']),
@@ -678,7 +679,7 @@ Convert this Portuguese query to SQL: {text}
                         'value': value
                     }]
                     break
-                    
+                
             # Filtro por ano genérico
             year = self.extract_year(text)
             if year and 'where' not in query_info:
@@ -688,7 +689,7 @@ Convert this Portuguese query to SQL: {text}
                 
                 if date_columns:
                     query_info['where'] = {'conditions': [{'type': 'year', 'column': date_columns[0], 'value': year}]}
-        
+    
         # Detecta ORDER BY
         order_match = re.search(self.patterns['order_by'], text)
         if order_match:
@@ -700,7 +701,8 @@ Convert this Portuguese query to SQL: {text}
                 query_info['order_by'] = {'column': order_column, 'direction': direction}
                 
         return query_info
-    
+    '''
+
     def generate_sql_from_rules(self, query_info: Dict) -> str:
         """Gera SQL a partir das informações da consulta baseada em regras"""
         if 'error' in query_info:
@@ -723,13 +725,13 @@ Convert this Portuguese query to SQL: {text}
         elif query_type == 'min':
             column = query_info.get('column', 'nota')
             select_clause = f"SELECT MIN({column})"
-        
+    
         # Constrói parte FROM com JOINs
         from_clause = f"FROM {table}"
         if 'joins' in query_info:
             for join in query_info['joins']:
                 from_clause += f" JOIN {join['table2']} ON {join['table1']}.{join['column1']} = {join['table2']}.{join['column2']}"
-        
+    
         sql = f"{select_clause} {from_clause}"
         
         # Adiciona condições WHERE com nova estrutura
@@ -793,32 +795,13 @@ Convert this Portuguese query to SQL: {text}
                     
             if conditions:
                 sql += " WHERE " + " AND ".join(conditions)
-        
+    
         # Adiciona ORDER BY
         if 'order_by' in query_info:
             order_info = query_info['order_by']
             sql += f" ORDER BY {order_info['column']} {order_info['direction']}"
-                
+            
         return sql
-    
-    def parse_query(self, text: str) -> Dict:
-        """Usa Llama para analisar a consulta em linguagem natural, com fallback para regras"""
-        if self.model_loaded:
-            try:
-                # Tenta usar a IA primeiro
-                sql = self.generate_sql_with_llama(text)
-                return {
-                    "raw_sql": sql,
-                    "parsed": True
-                }
-            except Exception as e:
-                print(f"Erro na geração do SQL com IA: {e}")
-                print("Usando método baseado em regras como fallback.")
-                # Se falhar, tenta o método baseado em regras
-                return self.parse_query_with_rules(text)
-        else:
-            # Se o modelo não foi carregado, usa diretamente o método baseado em regras
-            return self.parse_query_with_rules(text)
     
     def generate_sql(self, query_info: Dict) -> str:
         """Gera SQL a partir das informações da consulta"""
@@ -828,8 +811,10 @@ Convert this Portuguese query to SQL: {text}
         if "raw_sql" in query_info:
             return query_info["raw_sql"]
         
-        # Se não tiver SQL pronto da IA, gera SQL a partir das regras
-        return self.generate_sql_from_rules(query_info)
+        # Se não tiver SQL pronto da IA, tenta gerar com método de regras
+        # Esse caso é apenas para compatibilidade, já que o método baseado em regras
+        # está desabilitado
+        return f"ERROR: O modelo de IA não está disponível e o método baseado em regras está desativado."
 
 def display_results(results: List[Tuple], column_names: List[str]) -> None:
     """Exibe resultados com formatação melhorada"""
@@ -948,18 +933,17 @@ def main():
     text_to_sql = TextToSQL(db)
     
     # Escolhe método de processamento de consultas
-    use_ai = False
+    use_ai = True  # Agora AI é sempre usado por padrão
     if text_to_sql.model_loaded:
+        '''
         print("\nSelecione o método de processamento de consultas:")
         print("1. Baseado em regras (mais rápido, menos flexível)")
         print("2. Modelo de IA Llama 3.2 (mais preciso, mais lento)")
         method_choice = input("\nSua escolha [2]: ").strip() or "2"
         use_ai = method_choice == "2"
+        '''
         
-        if use_ai:
-            print("\nUsando modelo Llama 3.2 para processamento de consultas!")
-        else:
-            print("\nUsando método baseado em regras para processamento de consultas.")
+        print("\nUsando modelo Llama 3.2 para processamento de consultas!")
     else:
         print("\nModelo Llama 3.2 não disponível, usando método baseado em regras.")
     
@@ -983,13 +967,13 @@ def main():
         print(f"\nProcessando: '{query}'")
         
         try:
-            # Usa o método de IA ou regras baseado na escolha do usuário
-            if use_ai and text_to_sql.model_loaded:
+            # Usa apenas o método de IA
+            if text_to_sql.model_loaded:
                 # Use Llama para gerar SQL
                 sql = text_to_sql.generate_sql_with_llama(query)
                 print(f"\nSQL gerado (IA): {sql}")
             else:
-                # Use regras para gerar SQL
+                # Use regras para gerar SQL (somente quando IA não estiver disponível)
                 query_info = text_to_sql.parse_query_with_rules(query)
                 sql = text_to_sql.generate_sql_from_rules(query_info)
                 print(f"\nSQL gerado (regras): {sql}")
