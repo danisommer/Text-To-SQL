@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from tabulate import tabulate
 from typing import Dict, List, Tuple, Any, Optional, Union
 
-# Load environment variables and configure logging
+# Carrega variáveis de ambiente e configura o registro
 load_dotenv()
 transformers_logging.set_verbosity_error()
 
@@ -62,12 +62,12 @@ class DatabaseConnection:
         
         try:
             if self.db_type == 'mysql':
-                # Load tables and columns
+                # Carrega tabelas e colunas
                 cursor.execute("SHOW TABLES")
                 tables = [table[0] for table in cursor.fetchall()]
                 
                 for table in tables:
-                    # Get columns
+                    # Obtém colunas
                     cursor.execute(f"DESCRIBE {table}")
                     table_info = cursor.fetchall()
                     columns = [col[0] for col in table_info]
@@ -75,12 +75,12 @@ class DatabaseConnection:
                     self.schema[table] = columns
                     self.column_types[table] = column_types
                     
-                    # Get primary keys
+                    # Obtém chaves primárias
                     cursor.execute(f"SHOW KEYS FROM {table} WHERE Key_name = 'PRIMARY'")
                     pk_info = cursor.fetchall()
                     self.primary_keys[table] = [pk[4] for pk in pk_info]
                     
-                    # Get foreign keys
+                    # Obtém chaves estrangeiras
                     cursor.execute(f"""
                         SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
                         FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
@@ -89,7 +89,7 @@ class DatabaseConnection:
                     fk_info = cursor.fetchall()
                     self.foreign_keys[table] = [(fk[0], fk[1], fk[2]) for fk in fk_info]
                     
-                    # Get table comments
+                    # Obtém comentários da tabela
                     cursor.execute(f"""
                         SELECT TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '{table}'
                     """)
@@ -97,12 +97,12 @@ class DatabaseConnection:
                     self.table_comments[table] = comment_info[0] if comment_info and comment_info[0] else ""
                     
             elif self.db_type == 'postgresql':
-                # Load tables
+                # Carrega tabelas
                 cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
                 tables = [table[0] for table in cursor.fetchall()]
                 
                 for table in tables:
-                    # Get columns
+                    # Obtém colunas
                     cursor.execute(f"""
                         SELECT column_name, data_type, is_nullable, column_default
                         FROM information_schema.columns
@@ -115,7 +115,7 @@ class DatabaseConnection:
                     self.schema[table] = columns
                     self.column_types[table] = column_types
                     
-                    # Get primary keys
+                    # Obtém chaves primárias
                     cursor.execute(f"""
                         SELECT column_name FROM information_schema.table_constraints tc
                         JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
@@ -124,7 +124,7 @@ class DatabaseConnection:
                     pk_info = cursor.fetchall()
                     self.primary_keys[table] = [pk[0] for pk in pk_info]
                     
-                    # Get foreign keys
+                    # Obtém chaves estrangeiras
                     cursor.execute(f"""
                         SELECT kcu.column_name, ccu.table_name, ccu.column_name
                         FROM information_schema.table_constraints tc
@@ -135,7 +135,7 @@ class DatabaseConnection:
                     fk_info = cursor.fetchall()
                     self.foreign_keys[table] = [(fk[0], fk[1], fk[2]) for fk in fk_info]
                     
-                    # Get table comments
+                    # Obtém comentários da tabela
                     cursor.execute(f"""
                         SELECT obj_description(oid) FROM pg_class WHERE relname = '{table}' AND relkind = 'r'
                     """)
@@ -178,7 +178,7 @@ class TextToSQL:
         self.load_model()
     
     def load_model(self):
-        """Load the Llama 3.2 model"""
+        """Carrega o modelo Llama 3.2"""
         try:
             print("Carregando modelo Llama 3.2...")
             
@@ -204,7 +204,7 @@ class TextToSQL:
                 token=os.getenv("HUGGINGFACE_TOKEN")
             )
             
-            # Create pipeline for text generation
+            # Cria pipeline para geração de texto
             self.pipe = pipeline(
                 "text-generation",
                 model=self.model,
@@ -223,31 +223,31 @@ class TextToSQL:
             raise Exception(f"Falha ao carregar modelo: {e}")
 
     def format_schema_for_prompt(self):
-        """Format the database schema for the prompt"""
+        """Formata o esquema do banco de dados para o prompt"""
         schema_text = "DATABASE SCHEMA:\n\n"
         
-        # Add tables overview
+        # Adiciona visão geral das tabelas
         schema_text += "TABLES:\n"
         for table_name in self.schema.keys():
             schema_text += f"- {table_name}\n"
         schema_text += "\n"
         
-        # Add details for each table
+        # Adiciona detalhes para cada tabela
         for table_name, columns in self.schema.items():
             schema_text += f"TABLE: {table_name}\n"
             
-            # Primary keys
+            # Chaves primárias
             primary_keys = self.db.primary_keys.get(table_name, [])
             if primary_keys:
                 schema_text += f"Primary Key(s): {', '.join(primary_keys)}\n"
             
-            # Columns with types
+            # Colunas com tipos
             schema_text += "Columns:\n"
             for column in columns:
                 col_type = self.column_types.get(table_name, {}).get(column, "unknown")
                 schema_text += f"  - {column}: {col_type}\n"
             
-            # Foreign keys
+            # Chaves estrangeiras
             foreign_keys = self.db.foreign_keys.get(table_name, [])
             if foreign_keys:
                 schema_text += "Foreign Keys:\n"
@@ -259,7 +259,7 @@ class TextToSQL:
         return schema_text
     
     def generate_sql_with_llama(self, text: str) -> str:
-        """Generate SQL using the Llama model"""
+        """Gera SQL usando o modelo Llama"""
         if not self.model_loaded or self.pipe is None:
             raise Exception("Modelo Llama não carregado")
         
@@ -298,8 +298,8 @@ Convert this Portuguese query to SQL: {text}
             raise Exception("Resposta vazia do modelo")
 
     def extract_sql_from_response(self, response: str) -> str:
-        """Extract the SQL query from the model response"""
-        # Remove any markdown formatting and extract SQL
+        """Extrai a consulta SQL da resposta do modelo"""
+        # Remove qualquer formatação markdown e extrai o SQL
         sql_match = re.search(r"SQL query:\s*(.*?)(?:$|```)", response, re.DOTALL)
         
         if sql_match:
@@ -307,7 +307,7 @@ Convert this Portuguese query to SQL: {text}
             sql = re.sub(r"```sql|```", "", sql).strip()
             return sql
         
-        # Fallback: find any SQL-looking part
+        # Alternativa: encontra qualquer parte que pareça SQL
         lines = response.split('\n')
         for i, line in enumerate(lines):
             if 'SELECT' in line.upper() or 'WITH' in line.upper():
@@ -319,14 +319,14 @@ Convert this Portuguese query to SQL: {text}
                         break
                 return ' '.join(sql_lines)
         
-        # Fallback: return everything after "SQL query:"
+        # Alternativa: retorna tudo depois de "SQL query:"
         if "SQL query:" in response:
             return response.split("SQL query:")[1].strip()
         
         return response.strip()
     
     def parse_query(self, text: str) -> Dict:
-        """Use Llama to parse the natural language query"""
+        """Usa Llama para analisar a consulta em linguagem natural"""
         try:
             sql = self.generate_sql_with_llama(text)
             return {
@@ -340,7 +340,7 @@ Convert this Portuguese query to SQL: {text}
             }
     
     def generate_sql(self, query_info: Dict) -> str:
-        """Generate SQL from the query info"""
+        """Gera SQL a partir das informações da consulta"""
         if "error" in query_info:
             return query_info["error"]
         
@@ -400,12 +400,12 @@ def show_tables_summary(schema: Dict[str, List[str]], column_types: Dict[str, Di
         print(f"\n{table.upper()} ({len(columns)} colunas)")
         print("-" * 40)
         
-        # Show primary keys
+        # Mostra chaves primárias
         if pks:
             print(f"   🔑 Chave(s) primária(s): {', '.join(pks)}")
         
-        # Show columns
-        for col in columns[:6]:  # Show up to 6 columns
+        # Mostra colunas
+        for col in columns[:6]:  # Mostra até 6 colunas
             col_type = types.get(col, 'unknown')
             pk_marker = " [PK]" if col in pks else ""
             fk_marker = ""
@@ -418,10 +418,10 @@ def show_tables_summary(schema: Dict[str, List[str]], column_types: Dict[str, Di
         if len(columns) > 6:
             print(f"   ... e mais {len(columns) - 6} coluna(s)")
         
-        # Show foreign key relationships
+        # Mostra relacionamentos de chave estrangeira
         if fks:
             print("   🔗 Relacionamentos:")
-            for fk_col, ref_table, ref_col in fks[:3]:  # Show up to 3 FKs
+            for fk_col, ref_table, ref_col in fks[:3]:  # Mostra até 3 FKs
                 print(f"     {fk_col} -> {ref_table}.{ref_col}")
 
 def main():
