@@ -7,7 +7,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from transformers import logging as transformers_logging
 from dotenv import load_dotenv
 from tabulate import tabulate
-from typing import Dict, List, Tuple, Any, Optional, Union
+from typing import Dict, List, Tuple, Optional
 from difflib import SequenceMatcher
 
 # Carrega variáveis de ambiente e configura o registro
