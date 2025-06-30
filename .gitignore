@@ -1,4 +1,4 @@
 .vscode/
-
+models/
 text_to_sql_env/
 .env
