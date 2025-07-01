@@ -179,6 +179,7 @@ class TextToSQL:
         self.pipe = None
         self.model_loaded = False
         
+        '''
         # Enhanced patterns with better Portuguese support for rule-based parsing
         self.patterns = {
             'select_all': r'(?:mostre|exibir?|listar?|quais|qual|todos|todas|ver|visualizar).*?(?:de|da|do|das|dos|na|no|nas|nos)\s+([\w\s]+)',
@@ -195,6 +196,7 @@ class TextToSQL:
             'group_by': r'(?:agrupar|agrupado|por cada|para cada)\s+([\w\s]+)',
             'order_by': r'(?:ordenar|ordenado|classificar)\s+(?:por\s+)?([\w\s]+)(?:\s+(crescente|decrescente|asc|desc))?'
         }
+        '''
         
         # Try to load the AI model
         try:
@@ -351,7 +353,7 @@ Convert this Portuguese query to SQL: {text}
             return response.split("SQL query:")[1].strip()
         
         return response.strip()
-    
+    '''
     def similarity(self, a: str, b: str) -> float:
         """Calcula similaridade entre duas strings"""
         return SequenceMatcher(None, a.lower(), b.lower()).ratio()
@@ -572,7 +574,7 @@ Convert this Portuguese query to SQL: {text}
         
         return conditions
 
-    '''
+
     def parse_query_with_rules(self, text: str) -> Dict:
         """Analisa consulta usando método baseado em regras (sem IA)"""
         original_text = text
@@ -701,8 +703,7 @@ Convert this Portuguese query to SQL: {text}
                 query_info['order_by'] = {'column': order_column, 'direction': direction}
                 
         return query_info
-    '''
-
+        
     def generate_sql_from_rules(self, query_info: Dict) -> str:
         """Gera SQL a partir das informações da consulta baseada em regras"""
         if 'error' in query_info:
@@ -802,6 +803,7 @@ Convert this Portuguese query to SQL: {text}
             sql += f" ORDER BY {order_info['column']} {order_info['direction']}"
             
         return sql
+    '''
     
     def generate_sql(self, query_info: Dict) -> str:
         """Gera SQL a partir das informações da consulta"""
@@ -972,12 +974,13 @@ def main():
                 # Use Llama para gerar SQL
                 sql = text_to_sql.generate_sql_with_llama(query)
                 print(f"\nSQL gerado (IA): {sql}")
+            '''
             else:
                 # Use regras para gerar SQL (somente quando IA não estiver disponível)
                 query_info = text_to_sql.parse_query_with_rules(query)
                 sql = text_to_sql.generate_sql_from_rules(query_info)
                 print(f"\nSQL gerado (regras): {sql}")
-            
+            '''
             results, column_names = db.execute_query(sql)
             display_results(results, column_names)
         except Exception as e:
