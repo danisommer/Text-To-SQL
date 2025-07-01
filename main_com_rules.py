@@ -313,7 +313,7 @@ Convert this Portuguese query to SQL: {text}
 
         response = self.pipe(
             prompt,
-            max_new_tokens=120,
+            max_new_tokens=150,
             do_sample=False,
             pad_token_id=self.tokenizer.eos_token_id,
         )

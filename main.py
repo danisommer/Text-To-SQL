@@ -2,15 +2,14 @@ import mysql.connector
 import psycopg2
 import re
 import os
+from dotenv import load_dotenv
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from transformers import logging as transformers_logging
-from dotenv import load_dotenv
 from tabulate import tabulate
-from typing import Dict, List, Tuple, Optional
-from difflib import SequenceMatcher
+from typing import Dict, List, Tuple
 
-# Carrega variáveis de ambiente e configura o registro
+# carrega variaveis de ambiente e configura o registro
 load_dotenv()
 transformers_logging.set_verbosity_error()
 
@@ -25,7 +24,7 @@ class DatabaseConnection:
         self.table_comments = {}
         
     def connect(self, db_type: str, host: str, user: str, password: str, database: str, port: int = None) -> bool:
-        """Conecta a um banco de dados MySQL ou PostgreSQL"""
+        """conecta a um banco de dados mysql ou postgresql"""
         self.db_type = db_type.lower()
         try:
             if self.db_type == 'mysql':
@@ -37,38 +36,38 @@ class DatabaseConnection:
                     host=host, user=user, password=password, dbname=database, port=port if port else 5432
                 )
             else:
-                print(f"Tipo de banco de dados não suportado: {db_type}")
+                print(f"tipo de banco de dados nao suportado: {db_type}")
                 return False
             
-            print(f"Conectado ao banco {database}")
+            print(f"conectado ao banco {database}")
             self.load_schema()
             return True
         except Exception as e:
-            print(f"Erro ao conectar: {e}")
+            print(f"erro ao conectar: {e}")
             return False
     
     def disconnect(self) -> None:
-        """Fecha a conexao com o banco de dados"""
+        """fecha a conexao com o banco de dados"""
         if self.connection:
             self.connection.close()
-            print("Conexão fechada")
+            print("conexao fechada")
     
     def load_schema(self) -> None:
-        """Carrega o esquema do banco de dados"""
+        """carrega o esquema do banco de dados"""
         if not self.connection:
-            print("Não conectado a nenhum banco de dados")
+            print("nao conectado a nenhum banco de dados")
             return
         
         cursor = self.connection.cursor()
         
         try:
             if self.db_type == 'mysql':
-                # Carrega tabelas e colunas
+                # carrega tabelas e colunas
                 cursor.execute("SHOW TABLES")
                 tables = [table[0] for table in cursor.fetchall()]
                 
                 for table in tables:
-                    # Obtém colunas
+                    # obtem colunas
                     cursor.execute(f"DESCRIBE {table}")
                     table_info = cursor.fetchall()
                     columns = [col[0] for col in table_info]
@@ -76,12 +75,12 @@ class DatabaseConnection:
                     self.schema[table] = columns
                     self.column_types[table] = column_types
                     
-                    # Obtém chaves primárias
+                    # obtem chaves primarias
                     cursor.execute(f"SHOW KEYS FROM {table} WHERE Key_name = 'PRIMARY'")
                     pk_info = cursor.fetchall()
                     self.primary_keys[table] = [pk[4] for pk in pk_info]
                     
-                    # Obtém chaves estrangeiras
+                    # obtem chaves estrangeiras
                     cursor.execute(f"""
                         SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
                         FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
@@ -90,7 +89,7 @@ class DatabaseConnection:
                     fk_info = cursor.fetchall()
                     self.foreign_keys[table] = [(fk[0], fk[1], fk[2]) for fk in fk_info]
                     
-                    # Obtém comentários da tabela
+                    # obtem comentarios da tabela
                     cursor.execute(f"""
                         SELECT TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = '{table}'
                     """)
@@ -98,12 +97,12 @@ class DatabaseConnection:
                     self.table_comments[table] = comment_info[0] if comment_info and comment_info[0] else ""
                     
             elif self.db_type == 'postgresql':
-                # Carrega tabelas
+                # carrega tabelas
                 cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
                 tables = [table[0] for table in cursor.fetchall()]
                 
                 for table in tables:
-                    # Obtém colunas
+                    # obtem colunas
                     cursor.execute(f"""
                         SELECT column_name, data_type, is_nullable, column_default
                         FROM information_schema.columns
@@ -116,7 +115,7 @@ class DatabaseConnection:
                     self.schema[table] = columns
                     self.column_types[table] = column_types
                     
-                    # Obtém chaves primárias
+                    # obtem chaves primarias
                     cursor.execute(f"""
                         SELECT column_name FROM information_schema.table_constraints tc
                         JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
@@ -125,7 +124,7 @@ class DatabaseConnection:
                     pk_info = cursor.fetchall()
                     self.primary_keys[table] = [pk[0] for pk in pk_info]
                     
-                    # Obtém chaves estrangeiras
+                    # obtem chaves estrangeiras
                     cursor.execute(f"""
                         SELECT kcu.column_name, ccu.table_name, ccu.column_name
                         FROM information_schema.table_constraints tc
@@ -136,7 +135,7 @@ class DatabaseConnection:
                     fk_info = cursor.fetchall()
                     self.foreign_keys[table] = [(fk[0], fk[1], fk[2]) for fk in fk_info]
                     
-                    # Obtém comentários da tabela
+                    # obtem comentarios da tabela
                     cursor.execute(f"""
                         SELECT obj_description(oid) FROM pg_class WHERE relname = '{table}' AND relkind = 'r'
                     """)
@@ -144,14 +143,14 @@ class DatabaseConnection:
                     self.table_comments[table] = comment_info[0] if comment_info and comment_info[0] else ""
                     
         except Exception as e:
-            print(f"Erro ao carregar esquema: {e}")
+            print(f"erro ao carregar esquema: {e}")
         finally:
             cursor.close()
     
     def execute_query(self, query: str) -> Tuple[List[Tuple], List[str]]:
-        """Executa consulta SQL e retorna resultados com nomes das colunas"""
+        """executa consulta sql e retorna resultados com nomes das colunas"""
         if not self.connection:
-            print("Não conectado ao banco")
+            print("nao conectado ao banco")
             return [], []
         
         cursor = self.connection.cursor()
@@ -161,7 +160,7 @@ class DatabaseConnection:
             column_names = [desc[0] for desc in cursor.description] if cursor.description else []
             return results, column_names
         except Exception as e:
-            print(f"Erro ao executar consulta: {e}")
+            print(f"erro ao executar consulta: {e}")
             return [], []
         finally:
             cursor.close()
@@ -179,18 +178,18 @@ class TextToSQL:
         self.pipe = None
         self.model_loaded = False
         
-        # Try to load the AI model
+        # try to load the ai model
         try:
             self.load_model()
         except Exception as e:
-            print(f"Aviso: Não foi possível carregar o modelo de IA: {e}")
-            print("Usando método baseado em regras como alternativa.")
+            print(f"aviso: nao foi possivel carregar o modelo de ia: {e}")
+            print("usando metodo baseado em regras como alternativa.")
             self.model_loaded = False
     
     def load_model(self):
-        """Carrega o modelo Llama 3.2"""
+        """carrega o modelo llama 3.2"""
         try:
-            print("Carregando modelo Llama 3.2...")
+            print("carregando modelo llama 3.2...")
             
             model_name = os.getenv("LLAMA_MODEL_NAME", "meta-llama/Llama-3.2-1B-Instruct")
             use_cpu_only = os.getenv("USE_CPU_ONLY", "false").lower() == "true"
@@ -214,7 +213,7 @@ class TextToSQL:
                 token=os.getenv("HUGGINGFACE_TOKEN")
             )
             
-            # Cria pipeline para geração de texto
+            # cria pipeline para geracao de texto
             self.pipe = pipeline(
                 "text-generation",
                 model=self.model,
@@ -225,39 +224,39 @@ class TextToSQL:
                 return_full_text=False
             )
             
-            print("Modelo carregado com sucesso")
+            print("modelo carregado com sucesso")
             self.model_loaded = True
             
         except Exception as e:
-            print(f"Erro ao carregar modelo: {e}")
-            raise Exception(f"Falha ao carregar modelo: {e}")
+            print(f"erro ao carregar modelo: {e}")
+            raise Exception(f"falha ao carregar modelo: {e}")
 
     def format_schema_for_prompt(self):
-        """Formata o esquema do banco de dados para o prompt"""
+        """formata o esquema do banco de dados para o prompt"""
         schema_text = "DATABASE SCHEMA:\n\n"
         
-        # Adiciona visão geral das tabelas
+        # adiciona visao geral das tabelas
         schema_text += "TABLES:\n"
         for table_name in self.schema.keys():
             schema_text += f"- {table_name}\n"
         schema_text += "\n"
         
-        # Adiciona detalhes para cada tabela
+        # adiciona detalhes para cada tabela
         for table_name, columns in self.schema.items():
             schema_text += f"TABLE: {table_name}\n"
             
-            # Chaves primárias
+            # chaves primarias
             primary_keys = self.db.primary_keys.get(table_name, [])
             if primary_keys:
                 schema_text += f"Primary Key(s): {', '.join(primary_keys)}\n"
             
-            # Colunas com tipos
+            # colunas com tipos
             schema_text += "Columns:\n"
             for column in columns:
                 col_type = self.column_types.get(table_name, {}).get(column, "unknown")
                 schema_text += f"  - {column}: {col_type}\n"
             
-            # Chaves estrangeiras
+            # chaves estrangeiras
             foreign_keys = self.db.foreign_keys.get(table_name, [])
             if foreign_keys:
                 schema_text += "Foreign Keys:\n"
@@ -269,9 +268,9 @@ class TextToSQL:
         return schema_text
     
     def generate_sql_with_llama(self, text: str) -> str:
-        """Gera SQL usando o modelo Llama"""
+        """gera sql usando o modelo llama"""
         if not self.model_loaded or self.pipe is None:
-            raise Exception("Modelo Llama não carregado")
+            raise Exception("modelo llama nao carregado")
         
         schema_text = self.format_schema_for_prompt()
         prompt = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
@@ -296,7 +295,7 @@ Convert this Portuguese query to SQL: {text}
 
         response = self.pipe(
             prompt,
-            max_new_tokens=120,
+            max_new_tokens=150,
             do_sample=False,
             pad_token_id=self.tokenizer.eos_token_id,
         )
@@ -305,11 +304,11 @@ Convert this Portuguese query to SQL: {text}
             generated_text = response[0]["generated_text"]
             return self.extract_sql_from_response(generated_text)
         else:
-            raise Exception("Resposta vazia do modelo")
+            raise Exception("resposta vazia do modelo")
 
     def extract_sql_from_response(self, response: str) -> str:
-        """Extrai a consulta SQL da resposta do modelo"""
-        # Remove qualquer formatação markdown e extrai o SQL
+        """extrai a consulta sql da resposta do modelo"""
+        # remove qualquer formatacao markdown e extrai o sql
         sql_match = re.search(r"SQL query:\s*(.*?)(?:$|```)", response, re.DOTALL)
         
         if sql_match:
@@ -317,7 +316,7 @@ Convert this Portuguese query to SQL: {text}
             sql = re.sub(r"```sql|```", "", sql).strip()
             return sql
         
-        # Alternativa: encontra qualquer parte que pareça SQL
+        # alternativa: encontra qualquer parte que pareca sql
         lines = response.split('\n')
         for i, line in enumerate(lines):
             if 'SELECT' in line.upper() or 'WITH' in line.upper():
@@ -329,69 +328,69 @@ Convert this Portuguese query to SQL: {text}
                         break
                 return ' '.join(sql_lines)
         
-        # Alternativa: retorna tudo depois de "SQL query:"
+        # alternativa: retorna tudo depois de "sql query:"
         if "SQL query:" in response:
             return response.split("SQL query:")[1].strip()
         
         return response.strip()
 
     def generate_sql(self, query_info: Dict) -> str:
-        """Gera SQL a partir das informações da consulta"""
+        """gera sql a partir das informacoes da consulta"""
         if "error" in query_info:
             return query_info["error"]
         
         if "raw_sql" in query_info:
             return query_info["raw_sql"]
         
-        # Se não tiver SQL pronto da IA, tenta gerar com método de regras
-        # Esse caso é apenas para compatibilidade, já que o método baseado em regras
-        # está desabilitado
-        return f"ERROR: O modelo de IA não está disponível e o método baseado em regras está desativado."
+        # se nao tiver sql pronto da ia, tenta gerar com metodo de regras
+        # esse caso e apenas para compatibilidade, ja que o metodo baseado em regras
+        # esta desativado
+        return f"ERROR: o modelo de ia nao esta disponivel e o metodo baseado em regras esta desativado."
 
 def display_results(results: List[Tuple], column_names: List[str]) -> None:
-    """Exibe resultados com formatação melhorada"""
+    """exibe resultados com formatacao melhorada"""
     if not results:
-        print("Nenhum resultado encontrado")
+        print("nenhum resultado encontrado")
         return
     
-    print(f"\nEncontrados {len(results)} resultado(s)")
+    print(f"\nencontrados {len(results)} resultado(s)")
     print("=" * 50)
     
     if len(results) <= 20:
         print(tabulate(results, headers=column_names, tablefmt="grid"))
     else:
-        print(f"Mostrando primeiros 20 de {len(results)} resultados:")
+        print(f"mostrando primeiros 20 de {len(results)} resultados:")
         print(tabulate(results[:20], headers=column_names, tablefmt="grid"))
         print(f"\n... e mais {len(results) - 20} resultado(s)")
 
 def print_usage_guide():
-    """Guia de uso do sistema"""
+    """guia de uso do sistema"""
     guide = """
-SISTEMA TEXT-TO-SQL COM LLAMA 3.2
+sistema text-to-sql com llama 3.2
 
-EXEMPLOS DE CONSULTAS:
+exemplos de consultas:
    "mostre todos os alunos"
    "quantos professores existem"
-   "média de notas dos alunos"
+   "media de notas dos alunos"
    "maior nota registrada"
    "alunos com notas maiores que 8"
-   "professores de matemática"
+   "professores de matematica"
 
-COMANDOS:
-   'guia' - Mostra este guia
-   'sair' - Encerra o programa
+comandos:
+   'guia' - mostra este guia
+   'sair' - encerra o programa
 """
     print(guide)
 
 def show_tables_summary(schema: Dict[str, List[str]], column_types: Dict[str, Dict[str, str]], 
                        primary_keys: Dict[str, List[str]] = None, 
                        foreign_keys: Dict[str, List[Tuple[str, str, str]]] = None) -> None:
-    """Exibe resumo melhorado das tabelas com relacionamentos"""
+    """exibe resumo melhorado das tabelas com relacionamentos"""
     if not schema:
-        print("\nNenhuma tabela disponível")
+        print("\nnenhuma tabela disponivel")
         return
         
-    print("\nESTRUTURA DO BANCO:")
+    print("\nestrutura do banco:")
     
     for table in schema.keys():
         columns = schema[table]
@@ -402,12 +401,12 @@ def show_tables_summary(schema: Dict[str, List[str]], column_types: Dict[str, Di
         print(f"\n{table.upper()} ({len(columns)} colunas)")
         print("-" * 40)
         
-        # Mostra chaves primárias
+        # mostra chaves primarias
         if pks:
-            print(f"   🔑 Chave(s) primária(s): {', '.join(pks)}")
+            print(f"   chave(s) primaria(s): {', '.join(pks)}")
         
-        # Mostra colunas
-        for col in columns[:6]:  # Mostra até 6 colunas
+        # mostra colunas
+        for col in columns[:6]:  # mostra ate 6 colunas
             col_type = types.get(col, 'unknown')
             pk_marker = " [PK]" if col in pks else ""
             fk_marker = ""
@@ -420,31 +419,31 @@ def show_tables_summary(schema: Dict[str, List[str]], column_types: Dict[str, Di
         if len(columns) > 6:
             print(f"   ... e mais {len(columns) - 6} coluna(s)")
         
-        # Mostra relacionamentos de chave estrangeira
+        # mostra relacionamentos de chave estrangeira
         if fks:
-            print("   🔗 Relacionamentos:")
-            for fk_col, ref_table, ref_col in fks[:3]:  # Mostra até 3 FKs
+            print("   relacionamentos:")
+            for fk_col, ref_table, ref_col in fks[:3]:  # mostra ate 3 fks
                 print(f"     {fk_col} -> {ref_table}.{ref_col}")
 
 def main():
-    print("SISTEMA TEXT-TO-SQL COM LLAMA 3.2")
+    print("sistema text-to-sql com llama 3.2")
     
     db = DatabaseConnection()
     
-    print("\nSelecione o tipo de banco:")
-    print("1. MySQL")
-    print("2. PostgreSQL")
+    print("\nselecione o tipo de banco:")
+    print("1. mysql")
+    print("2. postgresql")
     
-    choice = input("\nSua escolha [1]: ").strip() or "1"
+    choice = input("\nsua escolha [1]: ").strip() or "1"
     
     db_type = "mysql" if choice == "1" else "postgresql" if choice == "2" else "mysql"
     
     if choice not in ["1", "2"]:
-        print("Opção inválida. Usando MySQL.")
+        print("opcao invalida. usando mysql.")
         db_type = "mysql"
     
     host = "localhost"
-    database = input(f"\nNome do banco: ").strip()
+    database = input(f"\nnome do banco: ").strip()
     
     if db_type == "mysql":
         port = int(os.getenv("MYSQL_PORT", 3306))
@@ -455,32 +454,32 @@ def main():
         user = os.getenv("POSTGRESQL_USER", "postgres")
         password = os.getenv("POSTGRESQL_PASSWORD", "postgres")
         
-    print(f"\nConectando ao {db_type.upper()} em {host}:{port}...")
+    print(f"\nconectando ao {db_type.upper()} em {host}:{port}...")
     
     if not db.connect(db_type, host, user, password, database, port):
-        print(f"\nFalha na conexão com '{database}'")
+        print(f"\nfalha na conexao com '{database}'")
         return
     
-    print("\nIniciando sistema Text-to-SQL...")
+    print("\niniciando sistema text-to-sql...")
     text_to_sql = TextToSQL(db)
     
-    # Escolhe método de processamento de consultas
-    use_ai = True  # Agora AI é sempre usado por padrão
+    # escolhe metodo de processamento de consultas
+    use_ai = True  # agora ai e sempre usado por padrao
     if text_to_sql.model_loaded:
-        print("\nUsando modelo Llama 3.2 para processamento de consultas!")
+        print("\nusando modelo llama 3.2 para processamento de consultas!")
     else:
-        print("\nModelo Llama 3.2 não disponível, usando método baseado em regras.")
+        print("\nmodelo llama 3.2 nao disponivel, usando metodo baseado em regras.")
     
-    print("\nSistema pronto! Digite suas consultas em português.")
+    print("\nsistema pronto! digite suas consultas em portugues.")
     
     while True:
         show_tables_summary(db.schema, db.column_types, db.primary_keys, db.foreign_keys)
         
-        print(f"\nDigite sua consulta (ou 'sair' para sair, 'guia' para ajuda):")
+        print(f"\ndigite sua consulta (ou 'sair' para sair, 'guia' para ajuda):")
         query = input("> ").strip()
         
         if query.lower() in ('sair', 's', 'exit', 'quit', 'q'):
-            print("Até logo!")
+            print("ate logo!")
             break
         elif query.lower() in ('guia', 'guide', 'help', 'ajuda'):
             print_usage_guide()
@@ -488,19 +487,19 @@ def main():
         elif not query:
             continue
             
-        print(f"\nProcessando: '{query}'")
+        print(f"\nprocessando: '{query}'")
         
         try:
-            # Usa apenas o método de IA
+            # usa apenas o metodo de ia
             if text_to_sql.model_loaded:
-                # Use Llama para gerar SQL
+                # use llama para gerar sql
                 sql = text_to_sql.generate_sql_with_llama(query)
-                print(f"\nSQL gerado (IA): {sql}")
+                print(f"\nsql gerado (ia): {sql}")
 
             results, column_names = db.execute_query(sql)
             display_results(results, column_names)
         except Exception as e:
-            print(f"Erro: {e}")
+            print(f"erro: {e}")
     
     db.disconnect()
 
